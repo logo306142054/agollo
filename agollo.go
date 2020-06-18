@@ -115,7 +115,8 @@ func New(configServerURL, appID string, opts ...Option) (Agollo, error) {
 func (a *agollo) initNamespace(namespaces ...string) error {
 	var uninitializedNamespaces []string
 	for _, namespace := range namespaces {
-		_, found := a.initialized.LoadOrStore(namespace, true)
+		//_, found := a.initialized.LoadOrStore(namespace, true)
+		_, found := a.initialized.Load(namespace)
 		if !found {
 			uninitializedNamespaces = append(uninitializedNamespaces, namespace)
 		}
@@ -129,9 +130,9 @@ func (a *agollo) initNamespace(namespaces ...string) error {
 	for _, namespace := range uninitializedNamespaces {
 		// (1)读取配置 (2)设置初始化notificationMap
 		status, _, err := a.reloadNamespace(namespace)
-		if err != nil {
-			return err
-		}
+		// if err != nil {
+		// 	return err
+		// }
 
 		// 这里没法光凭靠error==nil来判断，即使http请求失败，如果开启 容错，会导致error丢失
 		// 从而可能将一个不存在的namespace拿去调用getRemoteNotifications导致被hold
@@ -145,6 +146,9 @@ func (a *agollo) initNamespace(namespaces ...string) error {
 		} else {
 			// 不能正常获取notificationID的设置为默认notificationID
 			a.notificationMap.Store(namespace, defaultNotificationID)
+		}
+		if err == nil {
+			a.initialized.Store(namespace, true)
 		}
 	}
 
@@ -244,13 +248,16 @@ func (a *agollo) Get(key string, opts ...GetOption) string {
 }
 
 func (a *agollo) GetNameSpace(namespace string) Configurations {
-	config, found := a.cache.LoadOrStore(namespace, Configurations{})
+	config, found := a.cache.Load(namespace)
+	//config, found := a.cache.LoadOrStore(namespace, Configurations{})
 	if !found && a.opts.AutoFetchOnCacheMiss {
 		err := a.initNamespace(namespace)
 		if err != nil {
 			a.log("Action", "InitNamespace", "Error", err)
 		}
 		return a.getNameSpace(namespace)
+	} else {
+		config, _ = a.cache.LoadOrStore(namespace, Configurations{})
 	}
 
 	return config.(Configurations)
